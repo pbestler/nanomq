@@ -1660,6 +1660,12 @@ file_path_parse(int argc, char **argv, char **file_path)
 	return rv == -1;
 }
 
+static bool
+broker_tls_is_pkcs11_uri(const char *value)
+{
+	return (value != NULL) && (strncmp(value, "pkcs11:", 7) == 0);
+}
+
 int
 broker_parse_opts(int argc, char **argv, conf *config)
 {
@@ -1701,11 +1707,19 @@ broker_parse_opts(int argc, char **argv, conf *config)
 			break;
 		case OPT_TLS_CERT:
 			FREE_NONULL(config->tls.cert);
-			file_load_data(arg, (void **) &config->tls.cert);
+			if (broker_tls_is_pkcs11_uri(arg)) {
+				config->tls.cert = nng_strdup(arg);
+			} else {
+				file_load_data(arg, (void **) &config->tls.cert);
+			}
 			break;
 		case OPT_TLS_KEY:
 			FREE_NONULL(config->tls.key);
-			file_load_data(arg, (void **) &config->tls.key);
+			if (broker_tls_is_pkcs11_uri(arg)) {
+				config->tls.key = nng_strdup(arg);
+			} else {
+				file_load_data(arg, (void **) &config->tls.key);
+			}
 			break;
 		case OPT_TLS_KEYPASS:
 			FREE_NONULL(config->tls.key_password);

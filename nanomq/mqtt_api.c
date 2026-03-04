@@ -11,6 +11,7 @@
 #else
 #include <unistd.h>
 #endif
+#include <string.h>
 
 #include "mqtt_api.h"
 #include "nanomq.h"
@@ -23,6 +24,25 @@
 #if defined(SUPP_SYSLOG)
 #include <syslog.h>
 #endif
+
+static bool
+tls_is_pkcs11_uri(const char *value)
+{
+	return (value != NULL) && (strncmp(value, "pkcs11:", 7) == 0);
+}
+
+static int
+tls_require_openssl_engine_for_pkcs11(void)
+{
+	const char *engine = nng_tls_engine_name();
+	if (engine != NULL && strcmp(engine, "open") == 0) {
+		return 0;
+	}
+	log_error(
+	    "PKCS#11 TLS credentials require OpenSSL TLS engine (NNG_TLS_ENGINE=open), current engine: %s",
+	    engine ? engine : "none");
+	return NNG_ENOTSUP;
+}
 
 /**
  * @brief create listener for MQTT
@@ -64,6 +84,12 @@ init_listener_tls(nng_listener l, conf_tls *tls)
 
 	enum nng_tls_auth_mode mode = NNG_TLS_AUTH_MODE_NONE;
 
+	if (tls_is_pkcs11_uri(tls->cert) || tls_is_pkcs11_uri(tls->key)) {
+		if ((rv = tls_require_openssl_engine_for_pkcs11()) != 0) {
+			return rv;
+		}
+	}
+
 	if ((rv = nng_tls_config_alloc(&cfg, NNG_TLS_MODE_SERVER)) != 0) {
 		return (rv);
 	}
@@ -79,12 +105,19 @@ init_listener_tls(nng_listener l, conf_tls *tls)
 	rv = nng_tls_config_auth_mode(cfg, mode);
 
 	if ((rv == 0) && tls->cert != NULL) {
-		char *cert;
-		char *key;
+		const char *key = tls->key;
 
-		if ((rv = nng_tls_config_own_cert(cfg, tls->cert,
-		         tls->key ? tls->key : tls->cert,
-		         tls->key_password)) != 0) {
+		if (key == NULL) {
+			if (tls_is_pkcs11_uri(tls->cert)) {
+				log_error("PKCS#11 certificate URI requires explicit keyfile/key URI");
+				rv = NNG_EINVAL;
+				goto out;
+			}
+			key = tls->cert;
+		}
+
+		if ((rv = nng_tls_config_own_cert(
+		         cfg, tls->cert, key, tls->key_password)) != 0) {
 			goto out;
 		}
 	}
@@ -403,4 +436,3 @@ nano_iceoryx_recv_nng_msg(nng_iceoryx_suber *suber, nng_msg *icemsg, nng_msg **m
 }
 
 #endif
-

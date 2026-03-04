@@ -24,6 +24,25 @@
 #include "nng/supplemental/tls/tls.h"
 static int init_dialer_tls(nng_dialer d, const char *cacert, const char *cert,
     const char *key, const char *pass);
+
+static bool
+tls_is_pkcs11_uri(const char *value)
+{
+	return (value != NULL) && (strncmp(value, "pkcs11:", 7) == 0);
+}
+
+static int
+tls_require_openssl_engine_for_pkcs11(void)
+{
+	const char *engine = nng_tls_engine_name();
+	if (engine != NULL && strcmp(engine, "open") == 0) {
+		return 0;
+	}
+	log_error(
+	    "PKCS#11 bridge credentials require OpenSSL TLS engine (NNG_TLS_ENGINE=open), current engine: %s",
+	    engine ? engine : "none");
+	return NNG_ENOTSUP;
+}
 #endif
 
 static const char *quic_scheme = "mqtt-quic";
@@ -367,12 +386,27 @@ init_dialer_tls(nng_dialer d, const char *cacert, const char *cert,
 	nng_tls_config *cfg;
 	int             rv;
 
+	if (tls_is_pkcs11_uri(cert) || tls_is_pkcs11_uri(key)) {
+		if ((rv = tls_require_openssl_engine_for_pkcs11()) != 0) {
+			return rv;
+		}
+	}
+
 	if ((rv = nng_tls_config_alloc(&cfg, NNG_TLS_MODE_CLIENT)) != 0) {
 		return (rv);
 	}
 
-	if (cert != NULL && key != NULL) {
-		if ((rv = nng_tls_config_own_cert(cfg, cert, key, pass)) != 0) {
+	if (cert != NULL) {
+		const char *cert_key = key;
+		if (cert_key == NULL) {
+			if (tls_is_pkcs11_uri(cert)) {
+				log_error("PKCS#11 certificate URI requires explicit keyfile/key URI");
+				rv = NNG_EINVAL;
+				goto out;
+			}
+			cert_key = cert;
+		}
+		if ((rv = nng_tls_config_own_cert(cfg, cert, cert_key, pass)) != 0) {
 			goto out;
 		}
 	}
