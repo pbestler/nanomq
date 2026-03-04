@@ -32,9 +32,9 @@ NanoMQ support multi-listeners now.
 ```hcl
 listeners.ssl {
   bind = "0.0.0.0:8883"              # Bind to all network interfaces on port 8883
-  # key_password = <yourpass>        # String with the password to decrypt private keyfile
-  keyfile = "/etc/certs/key.pem"     # Key file path
-  certfile = "/etc/certs/cert.pem"   # User certificate file path
+  # key_password = <yourpass>        # Password to decrypt private keyfile (or PKCS#11 PIN if supported)
+  keyfile = "/etc/certs/key.pem"     # Key file path, or PKCS#11 URI (OpenSSL TLS engine)
+  certfile = "/etc/certs/cert.pem"   # User certificate file path, or PKCS#11 URI
   cacertfile = "/etc/certs/cacert.pem" # CA certificate file path
   verify_peer = false					  		 # If NanoMQ requests a certificate from the client 	
   fail_if_no_peer_cert = false			 # If to reject connection if no certificate is provided
@@ -44,16 +44,32 @@ listeners.ssl {
 ### **Configuration Items**
 
 - `bind`: Specifies the IP address and port that the SSL listener should bind to.
-- `key_password`: A string that contains the password needed to decrypt the private keyfile, only needed if the private keyfile has been encrypted with a password. 
-- `keyfile`: Specifies the path to the SSL key file that contains the user's private PEM-encoded key.
-- `certfile`: Specifies the path to the file that contains the user certificate.
-- `cacertfile`: Specifies the path to the file that contains the PEM-encoded CA certificates.
+- `key_password`: A string that contains the password needed to decrypt the private keyfile, only needed if the private keyfile has been encrypted with a password. When `keyfile` is a PKCS#11 URI, this value may be used as token PIN depending on OpenSSL/provider configuration.
+- `keyfile`: Specifies the path to the SSL key file that contains the user's private PEM-encoded key. PKCS#11 URI is also supported when NanoMQ is built with OpenSSL TLS engine.
+- `certfile`: Specifies the path to the file that contains the user certificate. PKCS#11 URI is also supported when NanoMQ is built with OpenSSL TLS engine.
+- `cacertfile`: Specifies the path to the file that contains the PEM-encoded CA certificates. PKCS#11 URI is also supported when NanoMQ is built with OpenSSL TLS engine.
 - `verify_peer`: Specifies whether the server requests a certificate from the client, optional value: 
   - `true`: verify_peer
   - `false `: verify_none
 - `fail_if_no_peer_cert`: Specifies whether to deny the connection if no certificate is provided, valid only when `verify_peer` is set to true, optional values: 
   - `true`: Rejects the connection if the client sends an empty certificate.
   - `false`: Rejects the connection only when the client sends an invalid certificate.
+
+### **PKCS#11 Example**
+
+PKCS#11 credentials require OpenSSL TLS engine (`-DNNG_ENABLE_TLS=ON -DNNG_TLS_ENGINE=open`).
+
+When any of `keyfile`, `certfile`, or `cacertfile` is configured as PKCS#11 URI, NanoMQ enforces PKCS#11 strict mode:
+- `keyfile` and `certfile` must both be PKCS#11 URIs.
+- `cacertfile` must also be PKCS#11 URI if configured.
+
+```hcl
+listeners.ssl {
+  bind = "0.0.0.0:8883"
+  keyfile = "pkcs11:token=NanoMQ;object=broker-key;type=private"
+  certfile = "pkcs11:token=NanoMQ;object=broker-cert;type=cert"
+}
+```
 
 ## MQTT/WebSocket Listener - 8083
 

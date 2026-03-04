@@ -26,9 +26,9 @@ NanoMQ MQTT Broker (NanoMQ) is a lightweight and blazing-fast MQTT Broker for th
 | --qos_duration  | -D           | -                                      | -                        | The interval of the qos timer                                |
 | --daemon        | -d           | true false                             | false                    | Run nanomq as daemon                                         |
 | --cacert        | -            | -                                      | -                        | Path to the file containing PEM-encoded CA certificates      |
-| --cert          | -E           | -                                      | -                        | Path to a file containing the user certificate               |
-| --key           | -            | -                                      | -                        | Path to the file containing the user's private PEM-encoded key |
-| --keypass       | -            | -                                      | -                        | String containing the user's password. Only used if the private keyfile is password-protected |
+| --cert          | -E           | -                                      | -                        | Path to a user certificate file, or PKCS#11 URI (OpenSSL TLS engine) |
+| --key           | -            | -                                      | -                        | Path to private PEM key file, or PKCS#11 URI (OpenSSL TLS engine) |
+| --keypass       | -            | -                                      | -                        | Password for encrypted keyfile, or token PIN for PKCS#11 URI when supported |
 | --verify        | -            | true false                             | false                    | Set verify peer certificate                                  |
 | --fail          | -            | true false                             | false                    | Server will fail if the client does not have a certificate to send |
 | --log_level     | -            | trace, debug, info, warn, error, fatal | warn                     | Log level                                                    |
@@ -180,4 +180,4 @@ $ nanomq_cli rules --delete --id 1
 
 {"code":0}
 ```
-
+When using PKCS#11 URIs for TLS credentials, NanoMQ enforces strict mode: `--cert` and `--key` must both be PKCS#11 URIs. If `--cacert` is provided in that mode, it must also be a PKCS#11 URI.

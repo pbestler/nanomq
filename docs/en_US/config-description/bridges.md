@@ -39,10 +39,10 @@ bridges.mqtt.emqx1 = {
   	}
   }
   ssl = {                                 # SSL configuration
-    key_password = "yourpass"             # SSL key password
-    keyfile = "/etc/certs/key.pem"        # SSL keyfile
-    certfile = "/etc/certs/cert.pem"      # SSL cert file
-    cacertfile = "/etc/certs/cacert.pem"  # SSL CA cert file
+    key_password = "yourpass"             # SSL key password (or PKCS#11 PIN if supported)
+    keyfile = "/etc/certs/key.pem"        # SSL keyfile, or PKCS#11 URI (OpenSSL TLS engine)
+    certfile = "/etc/certs/cert.pem"      # SSL cert file, or PKCS#11 URI
+    cacertfile = "/etc/certs/cacert.pem"  # SSL CA cert file, or PKCS#11 URI
   }
   
   forwards = [                            # Topics that need to be forwarded to the remote MQTT server
@@ -108,10 +108,15 @@ This configuration enables NanoMQ to establish an MQTT over TCP bridge connectio
 - `username`: Specifies the username for the bridge.
 - `password`: Specifies the password for the bridge.
 - `ssl`: Contains settings for SSL/TLS security:
-  - `key_password`: Specifies the password for the client's private key file, if it's password-protected.
-  - `keyfile`: Specifies the path to the client's private key file.
-  - `certfile`: Specifies the path to the client's certificate file.
-  - `cacertfile`: Specifies the path to the server's root CA certificate file. This certificate is used to identify the AWS IoT server.
+  - `key_password`: Specifies the password for the client's private key file, if it's password-protected. When `keyfile` is a PKCS#11 URI, this value may be used as token PIN depending on OpenSSL/provider configuration.
+  - `keyfile`: Specifies the path to the client's private key file. PKCS#11 URI is also supported when NanoMQ is built with OpenSSL TLS engine.
+  - `certfile`: Specifies the path to the client's certificate file. PKCS#11 URI is also supported when NanoMQ is built with OpenSSL TLS engine.
+  - `cacertfile`: Specifies the path to the server's root CA certificate file. This certificate is used to identify the AWS IoT server. PKCS#11 URI is also supported when NanoMQ is built with OpenSSL TLS engine.
+
+PKCS#11 strict mode:
+- If any of `keyfile`, `certfile`, or `cacertfile` uses a PKCS#11 URI, `keyfile` and `certfile` must both use PKCS#11 URIs.
+- `cacertfile` may remain a regular PEM file on disk, or it may use a PKCS#11 URI.
+- A common deployment is to keep `keyfile` and `certfile` in PKCS#11 while loading `cacertfile` from `/etc/ssl/...` or another PEM trust store.
 - `forwards`: This is an array of topics that need to be forwarded to the remote MQTT server, including
   - `remote_topic`: Topics refection topic, will change the topic in publish msg. Just leave `remote_topic=""` to preserve the original topic in msg   
   - `local_topic`: Topics that need to be forwarded to the remote MQTT server.
