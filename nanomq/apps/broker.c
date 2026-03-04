@@ -1703,7 +1703,11 @@ broker_parse_opts(int argc, char **argv, conf *config)
 			break;
 		case OPT_TLS_CA:
 			FREE_NONULL(config->tls.ca);
-			file_load_data(arg, (void **) &config->tls.ca);
+			if (broker_tls_is_pkcs11_uri(arg)) {
+				config->tls.ca = nng_strdup(arg);
+			} else {
+				file_load_data(arg, (void **) &config->tls.ca);
+			}
 			break;
 		case OPT_TLS_CERT:
 			FREE_NONULL(config->tls.cert);

@@ -43,6 +43,25 @@ tls_require_openssl_engine_for_pkcs11(void)
 	    engine ? engine : "none");
 	return NNG_ENOTSUP;
 }
+
+static int
+tls_validate_pkcs11_strict(const conf_tls *tls)
+{
+	bool any_pkcs11 = tls_is_pkcs11_uri(tls->cert) ||
+	    tls_is_pkcs11_uri(tls->key) || tls_is_pkcs11_uri(tls->ca);
+	if (!any_pkcs11) {
+		return 0;
+	}
+	if (!tls_is_pkcs11_uri(tls->cert) || !tls_is_pkcs11_uri(tls->key)) {
+		log_error("PKCS#11 strict mode: certfile and keyfile must both be PKCS#11 URIs");
+		return NNG_EINVAL;
+	}
+	if (tls->ca != NULL && !tls_is_pkcs11_uri(tls->ca)) {
+		log_error("PKCS#11 strict mode: cacertfile must be a PKCS#11 URI when configured");
+		return NNG_EINVAL;
+	}
+	return 0;
+}
 #endif
 
 static const char *quic_scheme = "mqtt-quic";
@@ -386,7 +405,8 @@ init_dialer_tls(nng_dialer d, const char *cacert, const char *cert,
 	nng_tls_config *cfg;
 	int             rv;
 
-	if (tls_is_pkcs11_uri(cert) || tls_is_pkcs11_uri(key)) {
+	if (tls_is_pkcs11_uri(cert) || tls_is_pkcs11_uri(key) ||
+	    tls_is_pkcs11_uri(cacert)) {
 		if ((rv = tls_require_openssl_engine_for_pkcs11()) != 0) {
 			return rv;
 		}
@@ -632,6 +652,9 @@ hybrid_tcp_client(bridge_param *bridge_arg)
 
 #ifdef NNG_SUPP_TLS
 	if (node->tls.enable) {
+		if ((rv = tls_validate_pkcs11_strict(&node->tls)) != 0) {
+			return rv;
+		}
 		if ((rv = init_dialer_tls(*dialer, node->tls.ca, node->tls.cert,
 		         node->tls.key, node->tls.key_password)) != 0) {
 			nng_free(new, sizeof(nng_socket));
@@ -1254,6 +1277,9 @@ bridge_tcp_reload(nng_socket *sock, conf *config, conf_bridge_node *node, bridge
 
 #ifdef NNG_SUPP_TLS
 	if (node->tls.enable) {
+		if ((rv = tls_validate_pkcs11_strict(&node->tls)) != 0) {
+			return rv;
+		}
 		if ((rv = init_dialer_tls(*dialer, node->tls.ca, node->tls.cert,
 		         node->tls.key, node->tls.key_password)) != 0) {
 			log_error("init_dialer_tls failed %d", rv);
@@ -1383,6 +1409,9 @@ bridge_tcp_client(nng_socket *sock, conf *config, conf_bridge_node *node, bridge
 
 #ifdef NNG_SUPP_TLS
 	if (node->tls.enable) {
+		if ((rv = tls_validate_pkcs11_strict(&node->tls)) != 0) {
+			return rv;
+		}
 		if ((rv = init_dialer_tls(*dialer, node->tls.ca, node->tls.cert,
 		         node->tls.key, node->tls.key_password)) != 0) {
 			log_error("init_dialer_tls failed %d", rv);

@@ -44,6 +44,25 @@ tls_require_openssl_engine_for_pkcs11(void)
 	return NNG_ENOTSUP;
 }
 
+static int
+tls_validate_pkcs11_strict(const conf_tls *tls)
+{
+	bool any_pkcs11 = tls_is_pkcs11_uri(tls->cert) ||
+	    tls_is_pkcs11_uri(tls->key) || tls_is_pkcs11_uri(tls->ca);
+	if (!any_pkcs11) {
+		return 0;
+	}
+	if (!tls_is_pkcs11_uri(tls->cert) || !tls_is_pkcs11_uri(tls->key)) {
+		log_error("PKCS#11 strict mode: certfile and keyfile must both be PKCS#11 URIs");
+		return NNG_EINVAL;
+	}
+	if (tls->ca != NULL && !tls_is_pkcs11_uri(tls->ca)) {
+		log_error("PKCS#11 strict mode: cacertfile must be a PKCS#11 URI when configured");
+		return NNG_EINVAL;
+	}
+	return 0;
+}
+
 /**
  * @brief create listener for MQTT
  * and start listen
@@ -84,7 +103,12 @@ init_listener_tls(nng_listener l, conf_tls *tls)
 
 	enum nng_tls_auth_mode mode = NNG_TLS_AUTH_MODE_NONE;
 
-	if (tls_is_pkcs11_uri(tls->cert) || tls_is_pkcs11_uri(tls->key)) {
+	if ((rv = tls_validate_pkcs11_strict(tls)) != 0) {
+		return rv;
+	}
+
+	if (tls_is_pkcs11_uri(tls->cert) || tls_is_pkcs11_uri(tls->key) ||
+	    tls_is_pkcs11_uri(tls->ca)) {
 		if ((rv = tls_require_openssl_engine_for_pkcs11()) != 0) {
 			return rv;
 		}
