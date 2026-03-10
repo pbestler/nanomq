@@ -25,14 +25,15 @@ cmake .. \
   -DCMAKE_C_COMPILER=$CC \
   -DCMAKE_CXX_COMPILER=$CXX \
   -DBUILD_STATIC_LIB=ON \
+  -DBUILD_CLIENT=OFF \
   -DENABLE_RULE_ENGINE=ON \
   -DENABLE_ACL=ON \
   -DENABLE_JWT=OFF \
   -DBUILD_NFTP=OFF \
   -DBUILD_NANOMQ_CLI=OFF \
-  -DNANOMQ_TESTS=OFF \
+  -DNANOMQ_TESTS=OFF
 
-make -j$(nproc)
+cmake --build . --target nanomq -- -j$(nproc)
 
 ################################
 # 3. 构建 fuzz targets
@@ -45,6 +46,9 @@ LIBS=(
   build/nanomq/libnanomq.a
   build/nng/libnng.a
   -lm
+  -lpthread
+  -ldl
+  -lnsl
 )
 
 INCLUDES=(
@@ -56,33 +60,29 @@ INCLUDES=(
   -Inng/src/supplemental
 )
 
-for src in $FUZZ_DIR/fuzz_*.c; do
-    target=$(basename "$src" .c)
-    echo "Building fuzz target: $target"
+src="$FUZZ_DIR/fuzz_pub_handler.c"
+target=$(basename "$src" .c)
+echo "Building fuzz target: $target"
 
-    $CC \
-      $src \
-      ${LIBS[@]} \
-      -fsanitize=fuzzer,address \
-      ${INCLUDES[@]} \
-      -DSUPP_RULE_ENGINE -DACL_SUPP \
-      -DNNG_PLATFORM_POSIX -DNNG_PLATFORM_LINUX \
-      -o $OUT/$target
-done
+$CC $CFLAGS \
+  $src \
+  ${INCLUDES[@]} \
+  -DSUPP_RULE_ENGINE -DACL_SUPP \
+  -DNNG_PLATFORM_POSIX -DNNG_PLATFORM_LINUX \
+  -o $OUT/$target \
+  ${LIBS[@]} \
+  $LIB_FUZZING_ENGINE \
+  $LDFLAGS
 
 ################################
 # 4. Seed corpus
 ################################
 
-for src in $FUZZ_DIR/fuzz_*.c; do
-    target=$(basename "$src" .c)
-    corpus_dir="$FUZZ_DIR/corpus/$target"
-
-    if [ -d "$corpus_dir" ]; then
-        mkdir -p "$OUT/${target}_seed_corpus"
-        cp "$corpus_dir"/* "$OUT/${target}_seed_corpus/" \
-           2>/dev/null || true
-    fi
-done
+corpus_dir="$FUZZ_DIR/corpus/$target"
+if [ -d "$corpus_dir" ]; then
+    mkdir -p "$OUT/${target}_seed_corpus"
+    cp "$corpus_dir"/* "$OUT/${target}_seed_corpus/" \
+       2>/dev/null || true
+fi
 
 echo "NanoMQ fuzz build done"
