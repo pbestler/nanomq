@@ -44,20 +44,15 @@ tls_require_openssl_engine_for_pkcs11(void)
 	return NNG_ENOTSUP;
 }
 
-static int
-tls_validate_pkcs11_strict(const conf_tls *tls)
+int
+bridge_tls_validate_pkcs11(const conf_tls *tls)
 {
-	bool any_pkcs11 = tls_is_pkcs11_uri(tls->cert) ||
-	    tls_is_pkcs11_uri(tls->key) || tls_is_pkcs11_uri(tls->ca);
-	if (!any_pkcs11) {
-		return 0;
-	}
-	if (!tls_is_pkcs11_uri(tls->cert) || !tls_is_pkcs11_uri(tls->key)) {
-		log_error("PKCS#11 strict mode: certfile and keyfile must both be PKCS#11 URIs");
-		return NNG_EINVAL;
-	}
-	if (tls->ca != NULL && !tls_is_pkcs11_uri(tls->ca)) {
-		log_error("PKCS#11 strict mode: cacertfile must be a PKCS#11 URI when configured");
+	bool cert_pkcs11 = tls_is_pkcs11_uri(tls->cert);
+	bool key_pkcs11  = tls_is_pkcs11_uri(tls->key);
+
+	if (cert_pkcs11 != key_pkcs11) {
+		log_error(
+		    "PKCS#11 bridge mode: certfile and keyfile must both be PKCS#11 URIs when either one uses PKCS#11");
 		return NNG_EINVAL;
 	}
 	return 0;
@@ -652,7 +647,7 @@ hybrid_tcp_client(bridge_param *bridge_arg)
 
 #ifdef NNG_SUPP_TLS
 	if (node->tls.enable) {
-		if ((rv = tls_validate_pkcs11_strict(&node->tls)) != 0) {
+		if ((rv = bridge_tls_validate_pkcs11(&node->tls)) != 0) {
 			return rv;
 		}
 		if ((rv = init_dialer_tls(*dialer, node->tls.ca, node->tls.cert,
@@ -1277,7 +1272,7 @@ bridge_tcp_reload(nng_socket *sock, conf *config, conf_bridge_node *node, bridge
 
 #ifdef NNG_SUPP_TLS
 	if (node->tls.enable) {
-		if ((rv = tls_validate_pkcs11_strict(&node->tls)) != 0) {
+		if ((rv = bridge_tls_validate_pkcs11(&node->tls)) != 0) {
 			return rv;
 		}
 		if ((rv = init_dialer_tls(*dialer, node->tls.ca, node->tls.cert,
@@ -1409,7 +1404,7 @@ bridge_tcp_client(nng_socket *sock, conf *config, conf_bridge_node *node, bridge
 
 #ifdef NNG_SUPP_TLS
 	if (node->tls.enable) {
-		if ((rv = tls_validate_pkcs11_strict(&node->tls)) != 0) {
+		if ((rv = bridge_tls_validate_pkcs11(&node->tls)) != 0) {
 			return rv;
 		}
 		if ((rv = init_dialer_tls(*dialer, node->tls.ca, node->tls.cert,

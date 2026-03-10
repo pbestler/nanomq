@@ -44,4 +44,8 @@ extern int bridge_subscribe(nng_socket *sock, conf_bridge_node *node,
 extern int bridge_unsubscribe(nng_socket *sock, conf_bridge_node *node,
     nng_mqtt_topic *topic, size_t unsub_count, property *properties);
 
+#ifdef NNG_SUPP_TLS
+extern int bridge_tls_validate_pkcs11(const conf_tls *tls);
+#endif
+
 #endif // NANOMQ_BRIDGE_H
