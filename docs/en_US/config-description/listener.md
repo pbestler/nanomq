@@ -58,6 +58,8 @@ listeners.ssl {
 ### **PKCS#11 Example**
 
 PKCS#11 credentials require OpenSSL TLS engine (`-DNNG_ENABLE_TLS=ON -DNNG_TLS_ENGINE=open`).
+To fail `cmake` early when PKCS#11 support is required, add `-DNNG_REQUIRE_PKCS11_PROVIDER=ON`, which requires OpenSSL 3 or newer.
+NanoMQ currently expects the OpenSSL provider name `pkcs11` when resolving PKCS#11 URIs.
 
 When any of `keyfile`, `certfile`, or `cacertfile` is configured as PKCS#11 URI, NanoMQ enforces PKCS#11 strict mode:
 - `keyfile` and `certfile` must both be PKCS#11 URIs.

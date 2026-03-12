@@ -113,6 +113,9 @@ This configuration enables NanoMQ to establish an MQTT over TCP bridge connectio
   - `certfile`: Specifies the path to the client's certificate file. PKCS#11 URI is also supported when NanoMQ is built with OpenSSL TLS engine.
   - `cacertfile`: Specifies the path to the server's root CA certificate file. This certificate is used to identify the AWS IoT server. PKCS#11 URI is also supported when NanoMQ is built with OpenSSL TLS engine.
 
+When PKCS#11 support is mandatory for a deployment, build with `-DNNG_REQUIRE_PKCS11_PROVIDER=ON` to make `cmake` fail unless OpenSSL 3 or newer is selected.
+NanoMQ currently expects the OpenSSL provider name `pkcs11` when resolving PKCS#11 URIs.
+
 PKCS#11 strict mode:
 - If any of `keyfile`, `certfile`, or `cacertfile` uses a PKCS#11 URI, `keyfile` and `certfile` must both use PKCS#11 URIs.
 - `cacertfile` may remain a regular PEM file on disk, or it may use a PKCS#11 URI.
