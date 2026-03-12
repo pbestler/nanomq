@@ -35,8 +35,16 @@ static int
 tls_require_openssl_engine_for_pkcs11(void)
 {
 	const char *engine = nng_tls_engine_name();
+	int         rv;
+
 	if (engine != NULL && strcmp(engine, "open") == 0) {
-		return 0;
+		rv = nng_tls_engine_check_pkcs11();
+		if (rv == 0) {
+			return 0;
+		}
+		log_error(
+		    "PKCS#11 TLS credentials require a loadable OpenSSL pkcs11 provider");
+		return rv;
 	}
 	log_error(
 	    "PKCS#11 TLS credentials require OpenSSL TLS engine (NNG_TLS_ENGINE=open), current engine: %s",
