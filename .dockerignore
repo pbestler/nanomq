@@ -1,0 +1,6 @@
+.git
+**/.git
+build
+nanomq/build
+nng/.git
+nng/build
