@@ -25,16 +25,21 @@ NanoMQ MQTT Broker (NanoMQ) is a lightweight and blazing-fast MQTT Broker for th
 | --msq_len       | -S           | -                                      | -                        | The queue length for resending messages                      |
 | --qos_duration  | -D           | -                                      | -                        | The interval of the qos timer                                |
 | --daemon        | -d           | true false                             | false                    | Run nanomq as daemon                                         |
-| --cacert        | -            | -                                      | -                        | Path to the file containing PEM-encoded CA certificates      |
-| --cert          | -E           | -                                      | -                        | Path to a file containing the user certificate               |
-| --key           | -            | -                                      | -                        | Path to the file containing the user's private PEM-encoded key |
-| --keypass       | -            | -                                      | -                        | String containing the user's password. Only used if the private keyfile is password-protected |
+| --cacert        | -            | -                                      | -                        | Path to a PEM CA file, or PKCS#11 URI (OpenSSL TLS engine)    |
+| --cert          | -E           | -                                      | -                        | Path to a user certificate file, or PKCS#11 URI (OpenSSL TLS engine) |
+| --key           | -            | -                                      | -                        | Path to private PEM key file, or PKCS#11 URI (OpenSSL TLS engine) |
+| --keypass       | -            | -                                      | -                        | Password for encrypted keyfile, or token PIN for PKCS#11 URI when supported |
 | --verify        | -            | true false                             | false                    | Set verify peer certificate                                  |
 | --fail          | -            | true false                             | false                    | Server will fail if the client does not have a certificate to send |
 | --log_level     | -            | trace, debug, info, warn, error, fatal | warn                     | Log level                                                    |
 | --log_file      | -            | -                                      | -                        | The path of the log file                                     |
 | --log_stdout    | -            | true, false                            | true                     | Enable/Disable console log output                            |
 | --log_syslog    | -            | true, false                            | false                    | Enable/Disable syslog (only enable on Linux)                 |
+
+PKCS#11 URIs require the OpenSSL TLS engine, OpenSSL 3 or newer, and a
+loadable OpenSSL provider named `pkcs11`. When any TLS option uses a PKCS#11
+URI, `--cert` and `--key` must both use PKCS#11 URIs. If `--cacert` is also
+provided, it must use a PKCS#11 URI as well.
 
 For example, we start NanoMQ listen mqtt message on url nmq-tcp://localhost:1884, websocket message on url nmq-ws://localhost:8085, enable http server on port 30000.
 
@@ -180,4 +185,3 @@ $ nanomq_cli rules --delete --id 1
 
 {"code":0}
 ```
-

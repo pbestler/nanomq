@@ -39,10 +39,10 @@ bridges.mqtt.emqx1 = {
   	}
   }
   ssl = {                                 # SSL configuration
-    key_password = "yourpass"             # SSL key password
-    keyfile = "/etc/certs/key.pem"        # SSL keyfile
-    certfile = "/etc/certs/cert.pem"      # SSL cert file
-    cacertfile = "/etc/certs/cacert.pem"  # SSL CA cert file
+    key_password = "yourpass"             # Key password or PKCS#11 PIN
+    keyfile = "/etc/certs/key.pem"        # Key file path or PKCS#11 URI
+    certfile = "/etc/certs/cert.pem"      # Certificate path or PKCS#11 URI
+    cacertfile = "/etc/certs/cacert.pem"  # CA path or PKCS#11 URI
   }
   
   forwards = [                            # Topics that need to be forwarded to the remote MQTT server
@@ -108,10 +108,20 @@ This configuration enables NanoMQ to establish an MQTT over TCP bridge connectio
 - `username`: Specifies the username for the bridge.
 - `password`: Specifies the password for the bridge.
 - `ssl`: Contains settings for SSL/TLS security:
-  - `key_password`: Specifies the password for the client's private key file, if it's password-protected.
-  - `keyfile`: Specifies the path to the client's private key file.
-  - `certfile`: Specifies the path to the client's certificate file.
-  - `cacertfile`: Specifies the path to the server's root CA certificate file. This certificate is used to identify the AWS IoT server.
+  - `key_password`: Specifies the password for an encrypted private key. For a
+    PKCS#11 key URI, it is passed to the provider as the token PIN.
+  - `keyfile`: Specifies a private key file path or PKCS#11 URI.
+  - `certfile`: Specifies a client certificate file path or PKCS#11 URI.
+  - `cacertfile`: Specifies a root CA file path or PKCS#11 URI.
+
+PKCS#11 URIs require the OpenSSL TLS engine and OpenSSL 3 or newer. Build with
+`-DNNG_ENABLE_TLS=ON -DNNG_TLS_ENGINE=open`. Adding
+`-DNNG_REQUIRE_PKCS11_PROVIDER=ON` makes CMake reject an older OpenSSL version.
+At runtime, the OpenSSL provider named `pkcs11` must be installed and loadable
+through the OpenSSL configuration or `OPENSSL_MODULES`.
+
+If either `keyfile` or `certfile` uses a PKCS#11 URI, both must use PKCS#11
+URIs. `cacertfile` can independently use either a PEM file or a PKCS#11 URI.
 - `forwards`: This is an array of topics that need to be forwarded to the remote MQTT server, including
   - `remote_topic`: Topics refection topic, will change the topic in publish msg. Just leave `remote_topic=""` to preserve the original topic in msg   
   - `local_topic`: Topics that need to be forwarded to the remote MQTT server.
