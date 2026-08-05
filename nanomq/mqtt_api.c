@@ -6,12 +6,13 @@
 // file was obtained (LICENSE.txt).  A copy of the license may also be
 // found online at https://opensource.org/licenses/MIT.
 //
+#include <string.h>
+
 #ifdef NANO_PLATFORM_WINDOWS
 #include <winsock.h>
 #else
 #include <unistd.h>
 #endif
-
 #include "mqtt_api.h"
 #include "nanomq.h"
 #include "nng/nng.h"
@@ -23,6 +24,43 @@
 #if defined(SUPP_SYSLOG)
 #include <syslog.h>
 #endif
+
+int
+nano_tls_require_pkcs11_engine(void)
+{
+	const char *engine = nng_tls_engine_name();
+
+	if ((engine != NULL) && (strcmp(engine, "open") == 0)) {
+		return (0);
+	}
+	log_error("PKCS#11 TLS credentials require the OpenSSL TLS engine "
+	          "(NNG_TLS_ENGINE=open); current engine: %s",
+	    engine ? engine : "none");
+	return (NNG_ENOTSUP);
+}
+
+int
+nano_tls_validate_listener_pkcs11(const conf_tls *tls)
+{
+	bool any_pkcs11 = conf_tls_is_pkcs11_uri(tls->cert) ||
+	    conf_tls_is_pkcs11_uri(tls->key) ||
+	    conf_tls_is_pkcs11_uri(tls->ca);
+	if (!any_pkcs11) {
+		return (0);
+	}
+	if (!conf_tls_is_pkcs11_uri(tls->cert) ||
+	    !conf_tls_is_pkcs11_uri(tls->key)) {
+		log_error("PKCS#11 listener mode requires certfile and keyfile "
+		          "to both use PKCS#11 URIs");
+		return (NNG_EINVAL);
+	}
+	if ((tls->ca != NULL) && !conf_tls_is_pkcs11_uri(tls->ca)) {
+		log_error("PKCS#11 listener mode requires cacertfile to use a "
+		          "PKCS#11 URI when configured");
+		return (NNG_EINVAL);
+	}
+	return (0);
+}
 
 /**
  * @brief create listener for MQTT
@@ -64,6 +102,18 @@ init_listener_tls(nng_listener l, conf_tls *tls)
 
 	enum nng_tls_auth_mode mode = NNG_TLS_AUTH_MODE_NONE;
 
+	if ((rv = nano_tls_validate_listener_pkcs11(tls)) != 0) {
+		return (rv);
+	}
+
+	if (conf_tls_is_pkcs11_uri(tls->cert) ||
+	    conf_tls_is_pkcs11_uri(tls->key) ||
+	    conf_tls_is_pkcs11_uri(tls->ca)) {
+		if ((rv = nano_tls_require_pkcs11_engine()) != 0) {
+			return (rv);
+		}
+	}
+
 	if ((rv = nng_tls_config_alloc(&cfg, NNG_TLS_MODE_SERVER)) != 0) {
 		return (rv);
 	}
@@ -79,12 +129,20 @@ init_listener_tls(nng_listener l, conf_tls *tls)
 	rv = nng_tls_config_auth_mode(cfg, mode);
 
 	if ((rv == 0) && tls->cert != NULL) {
-		char *cert;
-		char *key;
+		const char *key = tls->key;
 
-		if ((rv = nng_tls_config_own_cert(cfg, tls->cert,
-		         tls->key ? tls->key : tls->cert,
-		         tls->key_password)) != 0) {
+		if (key == NULL) {
+			if (conf_tls_is_pkcs11_uri(tls->cert)) {
+				log_error("PKCS#11 certificate URI requires an "
+				          "explicit keyfile URI");
+				rv = NNG_EINVAL;
+				goto out;
+			}
+			key = tls->cert;
+		}
+
+		if ((rv = nng_tls_config_own_cert(
+		         cfg, tls->cert, key, tls->key_password)) != 0) {
 			goto out;
 		}
 	}
@@ -209,6 +267,7 @@ log_file_init(conf_log *log)
         return NNG_EINVAL;
     }
 #endif
+
 	log->dir   = log->dir == NULL ? nng_strdup("./") : log->dir;
 	log->file  = log->file == NULL ? nng_strdup("nanomq.log") : log->file;
 	char *path = nano_concat_path(log->dir, log->file);
@@ -403,4 +462,3 @@ nano_iceoryx_recv_nng_msg(nng_iceoryx_suber *suber, nng_msg *icemsg, nng_msg **m
 }
 
 #endif
-

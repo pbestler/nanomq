@@ -1797,15 +1797,27 @@ broker_parse_opts(int argc, char **argv, conf *config)
 			break;
 		case OPT_TLS_CA:
 			FREE_NONULL(config->tls.ca);
-			file_load_data(arg, (void **) &config->tls.ca);
+			if (conf_tls_is_pkcs11_uri(arg)) {
+				config->tls.ca = nng_strdup(arg);
+			} else {
+				file_load_data(arg, (void **) &config->tls.ca);
+			}
 			break;
 		case OPT_TLS_CERT:
 			FREE_NONULL(config->tls.cert);
-			file_load_data(arg, (void **) &config->tls.cert);
+			if (conf_tls_is_pkcs11_uri(arg)) {
+				config->tls.cert = nng_strdup(arg);
+			} else {
+				file_load_data(arg, (void **) &config->tls.cert);
+			}
 			break;
 		case OPT_TLS_KEY:
 			FREE_NONULL(config->tls.key);
-			file_load_data(arg, (void **) &config->tls.key);
+			if (conf_tls_is_pkcs11_uri(arg)) {
+				config->tls.key = nng_strdup(arg);
+			} else {
+				file_load_data(arg, (void **) &config->tls.key);
+			}
 			break;
 		case OPT_TLS_KEYPASS:
 			FREE_NONULL(config->tls.key_password);

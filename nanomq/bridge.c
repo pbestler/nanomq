@@ -24,6 +24,20 @@
 #include "nng/supplemental/tls/tls.h"
 static int init_dialer_tls(nng_dialer d, const char *cacert, const char *cert,
     const char *key, const char *pass, const char *sni, bool verify_peer);
+
+int
+bridge_tls_validate_pkcs11(const conf_tls *tls)
+{
+	bool cert_pkcs11 = conf_tls_is_pkcs11_uri(tls->cert);
+	bool key_pkcs11  = conf_tls_is_pkcs11_uri(tls->key);
+
+	if (cert_pkcs11 != key_pkcs11) {
+		log_error("PKCS#11 bridge mode requires certfile and keyfile "
+		          "to both use PKCS#11 URIs");
+		return (NNG_EINVAL);
+	}
+	return (0);
+}
 #endif
 
 static const char *quic_scheme = "mqtt-quic";
@@ -366,6 +380,13 @@ init_dialer_tls(nng_dialer d, const char *cacert, const char *cert,
 	nng_tls_config *cfg;
 	int             rv;
 
+	if (conf_tls_is_pkcs11_uri(cert) || conf_tls_is_pkcs11_uri(key) ||
+	    conf_tls_is_pkcs11_uri(cacert)) {
+		if ((rv = nano_tls_require_pkcs11_engine()) != 0) {
+			return (rv);
+		}
+	}
+
 	if ((rv = nng_tls_config_alloc(&cfg, NNG_TLS_MODE_CLIENT)) != 0) {
 		return (rv);
 	}
@@ -377,8 +398,18 @@ init_dialer_tls(nng_dialer d, const char *cacert, const char *cert,
 		goto out;
 	}
 
-	if (cert != NULL && key != NULL) {
-		if ((rv = nng_tls_config_own_cert(cfg, cert, key, pass)) != 0) {
+	if (cert != NULL) {
+		const char *cert_key = key;
+		if (cert_key == NULL) {
+			if (conf_tls_is_pkcs11_uri(cert)) {
+				log_error("PKCS#11 certificate URI requires an "
+				          "explicit keyfile URI");
+				rv = NNG_EINVAL;
+				goto out;
+			}
+			cert_key = cert;
+		}
+		if ((rv = nng_tls_config_own_cert(cfg, cert, cert_key, pass)) != 0) {
 			goto out;
 		}
 	}
@@ -618,6 +649,9 @@ hybrid_tcp_client(bridge_param *bridge_arg)
 
 #ifdef NNG_SUPP_TLS
 	if (node->tls.enable) {
+		if ((rv = bridge_tls_validate_pkcs11(&node->tls)) != 0) {
+			goto error;
+		}
 		if ((rv = init_dialer_tls(*dialer, node->tls.ca,
 		         node->tls.cert, node->tls.key, node->tls.key_password,
 		         node->tls.sni, node->tls.verify_peer)) != 0) {
@@ -1350,6 +1384,9 @@ bridge_tcp_reload(nng_socket *sock, conf *config, conf_bridge_node *node, bridge
 
 #ifdef NNG_SUPP_TLS
 	if (node->tls.enable) {
+		if ((rv = bridge_tls_validate_pkcs11(&node->tls)) != 0) {
+			return (rv);
+		}
 		if ((rv = init_dialer_tls(*dialer, node->tls.ca,
 		         node->tls.cert, node->tls.key, node->tls.key_password,
 		         node->tls.sni, node->tls.verify_peer)) != 0) {
@@ -1475,6 +1512,9 @@ bridge_tcp_client(nng_socket *sock, conf *config, conf_bridge_node *node, bridge
 
 #ifdef NNG_SUPP_TLS
 	if (node->tls.enable) {
+		if ((rv = bridge_tls_validate_pkcs11(&node->tls)) != 0) {
+			return (rv);
+		}
 		if ((rv = init_dialer_tls(*dialer, node->tls.ca,
 		         node->tls.cert, node->tls.key, node->tls.key_password,
 		         node->tls.sni, node->tls.verify_peer)) != 0) {
