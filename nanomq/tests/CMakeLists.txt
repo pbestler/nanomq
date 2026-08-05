@@ -11,6 +11,7 @@ nanomq_test(rule_engine_test)
 nanomq_test(hashmap_test)
 nanomq_test(broker_tls_test)
 nanomq_test(bridge_tls_test)
+nanomq_test(bridge_pkcs11_test)
 nanomq_test(bridge_rap_rh_test)
 nanomq_test(bridge_aws_test)
 nanomq_test(bridge_muti_bridge_test)
@@ -22,4 +23,3 @@ if(NNG_ENABLE_QUIC)
 endif()
 
 add_subdirectory(fuzz)
-
