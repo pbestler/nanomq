@@ -102,11 +102,14 @@ This configuration enables NanoMQ to establish an MQTT over TCP bridge connectio
   - `5` for MQTT v5
   - `4` for MQTT v3.1.1
   - `3` for MQTT v3.1
-- `clientid`: Specifies the client ID for the bridge.
+- `clientid`: Specifies the client ID for the bridge. `${NAME}` placeholders
+  are replaced with values from the process environment.
 - `keepalive`: Specifies the ping interval for the bridge.
 - `clean_start`: Specifies the clean start flag for the bridge. **Note**: Some IoT platforms require this to be set to `false`.
-- `username`: Specifies the username for the bridge.
-- `password`: Specifies the password for the bridge.
+- `username`: Specifies the username for the bridge. Environment variables can
+  be referenced with `${NAME}` placeholders.
+- `password`: Specifies the password for the bridge. Environment variables can
+  be referenced with `${NAME}` placeholders.
 - `ssl`: Contains settings for SSL/TLS security:
   - `key_password`: Specifies the password for the client's private key file, if it's password-protected.
   - `keyfile`: Specifies the path to the client's private key file.
