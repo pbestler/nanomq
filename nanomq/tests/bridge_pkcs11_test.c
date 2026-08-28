@@ -1,5 +1,5 @@
 //
-// Copyright 2026 Peter Bestler <peter.bestler@liebherr.com>
+// Copyright 2026 Liebherr-Digital Development Center (LDC) <peter.bestler@liebherr.de>
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -8,6 +8,7 @@
 //
 
 #include <assert.h>
+#include <stdlib.h>
 
 #include "include/bridge.h"
 #include "include/mqtt_api.h"
@@ -121,6 +122,28 @@ test_listener_pkcs11_rejects_ca_uri_without_identity(void)
 
 	conf_tls_destroy(&tls);
 }
+
+static void
+test_bridge_pkcs11_loads_credentials(void)
+{
+	const char *cert_uri = getenv("NANOMQ_PKCS11_CERT_URI");
+	const char *key_uri  = getenv("NANOMQ_PKCS11_KEY_URI");
+	const char *ca_uri   = getenv("NANOMQ_PKCS11_CA_URI");
+	const char *pin      = getenv("NANOMQ_PKCS11_PIN");
+	nng_tls_config *cfg  = NULL;
+
+	/* The regular unit-test runs without a token; the CI integration
+	 * workflow enables this part by supplying all four variables. */
+	if ((cert_uri == NULL) || (key_uri == NULL) || (ca_uri == NULL) ||
+	    (pin == NULL)) {
+		return;
+	}
+
+	assert(nng_tls_config_alloc(&cfg, NNG_TLS_MODE_CLIENT) == 0);
+	assert(nng_tls_config_own_cert(cfg, cert_uri, key_uri, pin) == 0);
+	assert(nng_tls_config_ca_chain(cfg, ca_uri, NULL) == 0);
+	nng_tls_config_free(cfg);
+}
 #endif
 
 int
@@ -133,6 +156,7 @@ main(void)
 	test_listener_pkcs11_accepts_complete_uri_set();
 	test_listener_pkcs11_rejects_pem_ca();
 	test_listener_pkcs11_rejects_ca_uri_without_identity();
+	test_bridge_pkcs11_loads_credentials();
 #endif
 	return (0);
 }
