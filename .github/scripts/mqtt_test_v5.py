@@ -15,10 +15,6 @@ g_pub = "mosquitto_pub"
 
 g_url = " -h {addr} -p {port} ".format(addr = g_addr, port = g_port)
 
-cnt = 0
-non_cnt = 0
-shared_cnt = 0
-lock = threading.Lock()
 
 def clear_subclients():
     entries = os.popen("pidof mosquitto_sub")
@@ -31,23 +27,14 @@ def clear_subclients():
                 pass
     entries.close()
 
-def wait_message(process, route):
-    global cnt 
-    global non_cnt 
-    global shared_cnt 
+def wait_message(process, route, counts, lock):
     while True:
         output = process.stdout.readline()
         if output == "":
             return
         if output.strip() == 'message':
-            lock.acquire()
-            if route == 1:
-                cnt += 1
-            elif route == 2:
-                non_cnt += 1
-            else:
-                shared_cnt += 1
-            lock.release()
+            with lock:
+                counts[route - 1] += 1
 
 def cnt_substr(cmd, n, pid, message):
     process = subprocess.Popen(cmd,
@@ -75,6 +62,8 @@ def cnt_message(cmd, n, pid, message):
             n.value += 1
 
 def test_shared_subscription():
+    counts = [0, 0, 0]
+    lock = threading.Lock()
 
     p_cmd = g_pub + g_url + "-t 'topic_share' -V 5 -m message -d --repeat 10"
     s_cmd = g_sub + g_url + "-t '$share/a/topic_share'"
@@ -110,11 +99,11 @@ def test_shared_subscription():
         for process in (process1, process2, process3, process4, process5, process6):
             stop_process(process)
 
-    t1 = threading.Thread(target=wait_message, args=(process1, 1))
-    t2 = threading.Thread(target=wait_message, args=(process2, 1))
-    t3 = threading.Thread(target=wait_message, args=(process3, 1))
-    t4 = threading.Thread(target=wait_message, args=(process4, 2))
-    t5 = threading.Thread(target=wait_message, args=(process5, 3))
+    t1 = threading.Thread(target=wait_message, args=(process1, 1, counts, lock))
+    t2 = threading.Thread(target=wait_message, args=(process2, 1, counts, lock))
+    t3 = threading.Thread(target=wait_message, args=(process3, 1, counts, lock))
+    t4 = threading.Thread(target=wait_message, args=(process4, 2, counts, lock))
+    t5 = threading.Thread(target=wait_message, args=(process5, 3, counts, lock))
 
     t1.daemon = True
     t2.daemon = True
@@ -131,7 +120,7 @@ def test_shared_subscription():
     times = 0
     while True:
         lock.acquire()
-        if cnt == 10:
+        if counts[0] == 10:
             lock.release()
             stop_process(process1)
             stop_process(process2)
@@ -155,7 +144,7 @@ def test_shared_subscription():
     times = 0
     while True:
         lock.acquire()
-        if non_cnt == 10:
+        if counts[1] == 10:
             lock.release()
             stop_process(process4)
             break
@@ -177,7 +166,7 @@ def test_shared_subscription():
     times = 0
     while True:
         lock.acquire()
-        if shared_cnt == 10:
+        if counts[2] == 10:
             lock.release()
             stop_process(process5)
             break

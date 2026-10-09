@@ -43,4 +43,5 @@ jobs:
       # indefinitely; long-running stages have explicit bounds where possible.
       timeout-minutes: 10
       run: |
+        python3 .github/scripts/test_shared_subscription_state.py
         python3 .github/scripts/test.py

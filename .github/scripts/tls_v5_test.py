@@ -1,8 +1,6 @@
 #!/usr/bin/python3
-from cgi import test
 from curses import termattrs
 from operator import is_
-from re import S, T
 import subprocess
 import shlex
 import os
@@ -24,10 +22,6 @@ g_pub = "mosquitto_pub"
 # g_url = " -h {addr} -p {port} --cafile {cacert} --cert {cert} --key {key} --insecure".format(addr = g_addr, port = g_port, cacert = g_cacert, cert = g_cert, key = g_key)
 g_url = " -h {addr} -p {port} --cafile {cacert} --insecure ".format(addr = g_addr, port = g_port, cacert = g_cacert)
 
-cnt = 0
-non_cnt = 0
-shared_cnt = 0
-lock = threading.Lock()
 
 def set_port(port):
     global g_port
@@ -46,23 +40,14 @@ def clear_subclients():
                 pass
     entries.close()
 
-def wait_message(process, route):
-    global cnt 
-    global non_cnt 
-    global shared_cnt 
+def wait_message(process, route, counts, lock):
     while True:
         output = process.stdout.readline()
         if output == "":
             return
         if output.strip() == 'message':
-            lock.acquire()
-            if route == 1:
-                cnt += 1
-            elif route == 2:
-                non_cnt += 1
-            else:
-                shared_cnt += 1
-            lock.release()
+            with lock:
+                counts[route - 1] += 1
 
 def cnt_substr(cmd, n, pid, message):
     process = subprocess.Popen(cmd,
@@ -90,6 +75,8 @@ def cnt_message(cmd, n, pid, message):
             n.value += 1
 
 def test_shared_subscription():
+    counts = [0, 0, 0]
+    lock = threading.Lock()
     # QoS 1 so the publisher's disconnect cannot race its queued publishes
     # on a slow broker (same failure mode as the topic-alias test)
     p_cmd = g_pub + g_url + "-t 'topic_share' -V 5 -m message -d -q 1 --repeat 10"
@@ -129,11 +116,11 @@ def test_shared_subscription():
         for process in (process1, process2, process3, process4, process5, process6):
             stop_process(process)
 
-    t1 = threading.Thread(target=wait_message, args=(process1, 1))
-    t2 = threading.Thread(target=wait_message, args=(process2, 1))
-    t3 = threading.Thread(target=wait_message, args=(process3, 1))
-    t4 = threading.Thread(target=wait_message, args=(process4, 2))
-    t5 = threading.Thread(target=wait_message, args=(process5, 3))
+    t1 = threading.Thread(target=wait_message, args=(process1, 1, counts, lock))
+    t2 = threading.Thread(target=wait_message, args=(process2, 1, counts, lock))
+    t3 = threading.Thread(target=wait_message, args=(process3, 1, counts, lock))
+    t4 = threading.Thread(target=wait_message, args=(process4, 2, counts, lock))
+    t5 = threading.Thread(target=wait_message, args=(process5, 3, counts, lock))
 
     t1.daemon = True
     t2.daemon = True
@@ -150,7 +137,7 @@ def test_shared_subscription():
     times = 0
     while True:
         lock.acquire()
-        if cnt == 10:
+        if counts[0] == 10:
             lock.release()
             stop_process(process1)
             stop_process(process2)
@@ -175,7 +162,7 @@ def test_shared_subscription():
     times = 0
     while True:
         lock.acquire()
-        if non_cnt == 10:
+        if counts[1] == 10:
             lock.release()
             stop_process(process4)
             break
@@ -198,7 +185,7 @@ def test_shared_subscription():
     times = 0
     while True:
         lock.acquire()
-        if shared_cnt == 10:
+        if counts[2] == 10:
             lock.release()
             stop_process(process5)
             break
