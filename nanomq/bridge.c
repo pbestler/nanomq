@@ -451,8 +451,10 @@ init_dialer_tls(nng_dialer d, const char *cacert, const char *cert,
 			goto out;
 		}
 	} else {
-		nng_dialer_get_url(d, &url);
-		nng_tls_config_server_name(cfg, url->u_hostname);
+		if ((rv = nng_dialer_get_url(d, &url)) != 0 ||
+		    (rv = nng_tls_config_server_name(cfg, url->u_hostname)) != 0) {
+			goto out;
+		}
 	}
 	rv = nng_dialer_set_ptr(d, NNG_OPT_TLS_CONFIG, cfg);
 

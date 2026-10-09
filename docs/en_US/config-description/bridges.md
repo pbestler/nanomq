@@ -108,6 +108,11 @@ This configuration enables NanoMQ to establish an MQTT over TCP bridge connectio
 - `username`: Specifies the username for the bridge.
 - `password`: Specifies the password for the bridge.
 - `ssl`: Contains settings for SSL/TLS security:
+  - `verify_peer`: Enable certificate chain and peer identity verification.
+    With the OpenSSL engine, the certificate must match the bridge URL DNS
+    hostname or IP SAN. Keep this enabled for authenticated TLS connections.
+  - `sni`: Override the expected TLS server identity. DNS names also select
+    the SNI host; IP literals are verified against IP SANs without SNI.
   - `key_password`: Specifies the password for an encrypted private key. For a
     PKCS#11 key URI, it is passed to the provider as the token PIN.
   - `keyfile`: Specifies a private key file path or PKCS#11 URI.
