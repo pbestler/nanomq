@@ -971,9 +971,12 @@ process_request(http_msg *msg, conf_http_server *hconfig, nng_socket *sock)
 			status = NNG_HTTP_STATUS_UNAUTHORIZED;
 			goto exit;
 		}
+		break;
 
 	default:
-		break;
+		status = NNG_HTTP_STATUS_UNAUTHORIZED;
+		code = REQ_PARAM_ERROR;
+		goto exit;
 	}
 	if (msg->uri == NULL)	//Probably due to HTTP resend
 		goto exit;
@@ -4350,6 +4353,12 @@ put_mqtt_bridge(http_msg *msg, const char *name)
 		if (reload_arg != NULL)
 			nng_atomic_set_bool(reload_arg->reloading, true);
 		nng_mtx_lock(node->mtx);
+		if ((rv = preserve_bridge_secrets(node_obj, node)) != 0) {
+			if (reload_arg != NULL)
+				nng_atomic_set_bool(reload_arg->reloading, false);
+			nng_mtx_unlock(node->mtx);
+			break;
+		}
 		node->enable = false;
 		if (node->dialer != NULL)
 			nng_dialer_off(*node->dialer);
@@ -4390,7 +4399,7 @@ put_mqtt_bridge(http_msg *msg, const char *name)
 		nng_strfree(node->name);
 		node->name = node_name;
 		node->parallel = parallel;
-		log_info("Bridge Reload with %.*s", msg->data_len, msg->data);
+		log_info("Bridge Reload: %s", name);
 		bridge->nodes[i] = node;
 		// restart bridge client, parameters: config, node, node->sock
 		if ((rv = bridge_reload(node->sock, config, node)) != 0) {

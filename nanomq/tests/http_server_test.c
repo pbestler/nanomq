@@ -458,7 +458,7 @@ test_get_bridge()
 }
 
 static bool
-test_put_bridges()
+test_put_bridges_password(const char *password_field)
 {
 	char cmd[2048];
 	snprintf(cmd, sizeof(cmd),
@@ -473,15 +473,65 @@ test_put_bridges()
 	    "\"clientid\": \"hello3\","
 	    "\"clean_start\": true,"
 	    "\"username\": \"emqx\","
-	    "\"password\": \"emqx123\","
+	    "%s"
 	    "\"keepalive\": 60,"
 	    "\"forwards\": [{\"remote_topic\":\"topic1/#\",\"local_topic\":\"topic1_lo/#\"}],"
 	    "\"subscription\": [{\"remote_topic\":\"topic1/#\",\"local_topic\":\"topic1_lo/#\",\"qos\": 1}]}}'",
-	    test_env_test_port_text());
+	    test_env_test_port_text(), password_field);
 	FILE *fd = popen(cmd, "r");
     bool  rv = check_http_return(fd, STATUS_CODE_OK, SUCCEED);
     SAFE_POPEN_CLOSE(fd);
     return rv;
+}
+
+static bool
+test_put_bridges()
+{
+	return test_put_bridges_password("\"password\":\"emqx123\",");
+}
+
+static bool
+test_bridge_secret_updates(conf *config)
+{
+	conf_bridge_node *node = config->bridge.nodes[0];
+	const char *fields[] = { "\"password\":null,", "",
+		"\"password\":\"rotated-test-token\"," };
+	for (size_t i = 0; i < sizeof(fields) / sizeof(fields[0]); i++) {
+		if (!test_put_bridges_password(fields[i])) {
+			return false;
+		}
+		nng_mtx_lock(node->mtx);
+		bool same = node->password != NULL && strcmp(node->password,
+		    i == 2 ? "rotated-test-token" : "emqx123") == 0;
+		nng_mtx_unlock(node->mtx);
+		if (!same) {
+			return false;
+		}
+	}
+	return true;
+}
+
+static bool
+test_admin_listener(conf *config)
+{
+	char addr[128];
+	nng_url *url;
+	nng_http_server *server;
+	nng_sockaddr bound;
+	snprintf(addr, sizeof(addr), "http://%s:%u/api/v4",
+	    config->http_server.ip_addr, config->http_server.port);
+	if (nng_url_parse(&url, addr) != 0) {
+		return false;
+	}
+	int rv = nng_http_server_hold(&server, url);
+	nng_url_free(url);
+	if (rv != 0) {
+		return false;
+	}
+	rv = nng_http_server_get_addr(server, &bound);
+	nng_http_server_release(server);
+	return rv == 0 && bound.s_family == NNG_AF_INET &&
+	    bound.s_in.sa_addr == htonl(INADDR_LOOPBACK);
 }
 
 static bool
@@ -1132,6 +1182,7 @@ main()
     assert(conf != NULL);
     nng_thread_create(&nmq, (void *) broker_start_with_conf, (void *) conf);
     assert(wait_for_http_server_ready(2000));
+	assert(test_admin_listener(conf));
 	if (has_mosquitto_sub) {
 		pid_sub = popen_with_cmd(&outfp, cmd1, cmd);
 		pid_sub2 = popen_with_cmd(&outfp2, cmd2, cmd);
@@ -1179,6 +1230,7 @@ main()
     assert(test_get_bridges());
     assert(test_get_bridge());
     assert(test_put_bridges());
+	assert(test_bridge_secret_updates(conf));
     // Reconfiguration reconnects the bridge before it can process SUB/UNSUB.
     nng_msleep(1000);
     // The reloaded node must survive the connect-status flag swap and

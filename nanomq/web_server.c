@@ -501,22 +501,43 @@ get_global_conf(void)
 	return global_config;
 }
 
-void
+int
 set_http_server_conf(conf_http_server *conf)
 {
-
-	// `users` is the multi-credential source. Only fall back to the built-in
-	// default credential when the config declares no credential at all.
-	if (!conf->users_present) {
-		if (conf->username == NULL) {
-			conf->username = nng_strdup(HTTP_DEFAULT_USER);
+	switch (conf->auth_type) {
+	case BASIC:
+		// `users` keeps only valid entries; the legacy pair counts when
+		// both halves are set.
+		if (conf->users_count == 0 &&
+		    (conf->username == NULL || conf->username[0] == '\0' ||
+		        conf->password == NULL || conf->password[0] == '\0')) {
+			return NNG_EINVAL;
 		}
-		if (conf->password == NULL) {
-			conf->password = nng_strdup(HTTP_DEFAULT_PASSWORD);
+		break;
+	case JWT:
+#ifdef SUPP_JWT
+		if (conf->jwt.public_key == NULL ||
+		    conf->jwt.public_key_len == 0) {
+			return NNG_EINVAL;
 		}
+		break;
+#else
+		return NNG_ENOTSUP;
+#endif
+	default:
+		return NNG_EINVAL;
+	}
+	if (conf->ip_addr == NULL) {
+		if ((conf->ip_addr = nng_strdup(HTTP_DEFAULT_ADDR)) == NULL) {
+			return NNG_ENOMEM;
+		}
+	} else if (conf->ip_addr[0] == '\0') {
+		// An empty HTTP hostname would bind all interfaces.
+		return NNG_EINVAL;
 	}
 
 	http_server_conf = conf;
+	return 0;
 }
 
 conf_http_server *
@@ -535,6 +556,12 @@ int
 start_rest_server(conf *conf)
 {
 	int rv;
+	if ((rv = set_http_server_conf(&conf->http_server)) != 0) {
+		log_error("Invalid HTTP listener or authentication configuration");
+		return rv;
+	}
+	set_global_conf(conf);
+	nng_mtx_alloc(&conf->restapi_lk);
 	rv = nng_thread_create(&inproc_thr, inproc_server, &conf->http_server);
 	if (rv != 0) {
 		NANO_NNG_FATAL("cannot start inproc server", rv);
@@ -542,12 +569,7 @@ start_rest_server(conf *conf)
 
 	uint16_t port = conf->http_server.port ? conf->http_server.port
 	                                       : HTTP_DEFAULT_PORT;
-	set_global_conf(conf);
-	nng_mtx_alloc(&conf->restapi_lk);
-	set_http_server_conf(&conf->http_server);
-	char *addr = conf->http_server.ip_addr != NULL
-	    ? conf->http_server.ip_addr
-	    : HTTP_DEFAULT_ADDR;
+	char *addr = conf->http_server.ip_addr;
 	boot_time  = nng_clock();
 	log_info(REST_URL, addr, port);
 	rest_start(port, addr, conf);

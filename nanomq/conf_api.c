@@ -74,12 +74,12 @@ get_tls_config(conf_tls *tls, bool is_server)
 	cJSON *tls_obj = cJSON_CreateObject();
 	cJSON_AddBoolToObject(tls_obj, "enable", tls->enable);
 	cJSON_AddStringOrNullToObject(tls_obj, "url", tls->url);
-	cJSON_AddStringOrNullToObject(
-	    tls_obj, "key_password", tls->key_password);
-	cJSON_AddStringOrNullToObject(tls_obj, "key", tls->key);
+	cJSON_AddNullToObject(tls_obj, "key_password");
+	cJSON_AddNullToObject(tls_obj, "key");
 	cJSON_AddStringOrNullToObject(tls_obj, "cert", tls->cert);
 	cJSON_AddStringOrNullToObject(tls_obj, "cacert", tls->ca);
 	cJSON_AddBoolToObject(tls_obj, "verify_peer", tls->verify_peer);
+	cJSON_AddStringOrNullToObject(tls_obj, "sni", tls->sni);
 	cJSON_AddBoolToObject(tls_obj, "fail_if_no_peer_cert", tls->set_fail);
 	return tls_obj;
 }
@@ -90,11 +90,9 @@ get_auth_config(conf_auth *auth)
 	cJSON *auth_arr = cJSON_CreateArray();
 	for (size_t i = 0; i < auth->count; i++) {
 		cJSON *item = cJSON_CreateObject();
-		// TODO Does the password need to be encrypted ?
 		cJSON_AddStringOrNullToObject(
 		    item, "login", auth->usernames[i]);
-		cJSON_AddStringOrNullToObject(
-		    item, "password", auth->passwords[i]);
+		cJSON_AddNullToObject(item, "password");
 
 		cJSON_AddItemToArray(auth_arr, item);
 	}
@@ -110,8 +108,7 @@ get_auth_http_req_config(conf_auth_http_req *req)
 	cJSON_AddStringOrNullToObject(req_obj, "method", req->method);
 	cJSON *headers = cJSON_CreateObject();
 	for (size_t i = 0; i < req->header_count; i++) {
-		cJSON_AddStringToObject(
-		    headers, req->headers[i]->key, req->headers[i]->value);
+		cJSON_AddNullToObject(headers, req->headers[i]->key);
 	}
 	cJSON_AddItemToObject(req_obj, "headers", headers);
 
@@ -184,8 +181,7 @@ get_http_config(conf_http_server *http)
 			cJSON *user_obj = cJSON_CreateObject();
 			cJSON_AddStringOrNullToObject(
 			    user_obj, "username", user->username);
-			cJSON_AddStringOrNullToObject(
-			    user_obj, "password", user->password);
+			cJSON_AddNullToObject(user_obj, "password");
 			cJSON_AddItemToArray(users, user_obj);
 		}
 		cJSON_AddItemToObject(http_obj, "users", users);
@@ -193,8 +189,7 @@ get_http_config(conf_http_server *http)
 	if (http->username != NULL || http->password != NULL) {
 		cJSON_AddStringOrNullToObject(
 		    http_obj, "username", http->username);
-		cJSON_AddStringOrNullToObject(
-		    http_obj, "password", http->password);
+		cJSON_AddNullToObject(http_obj, "password");
 	}
 	if (http->cred_mtx != NULL) {
 		nng_mtx_unlock(http->cred_mtx);
@@ -248,7 +243,7 @@ get_bridge_connector(conf_bridge_node *node)
 	cJSON_AddStringOrNullToObject(connector, "clientid", node->clientid);
 	cJSON_AddBoolToObject(connector, "clean_start", node->clean_start);
 	cJSON_AddStringOrNullToObject(connector, "username", node->username);
-	cJSON_AddStringOrNullToObject(connector, "password", node->password);
+	cJSON_AddNullToObject(connector, "password");
 	cJSON_AddNumberToObject(connector, "keepalive", node->keepalive);
 
 	if (node->proto_ver == MQTT_PROTOCOL_VERSION_v5) {
@@ -473,6 +468,75 @@ get_bridge_config(conf_bridge *bridge, const char *node_name)
 	return bridge_obj;
 }
 
+static int
+preserve_secret(cJSON *json, const char *key, const char *current)
+{
+	cJSON *value = cJSON_GetObjectItem(json, key);
+	if (cJSON_IsString(value)) {
+		return 0;
+	}
+	if (value != NULL && !cJSON_IsNull(value)) {
+		return NNG_EINVAL;
+	}
+	if (current != NULL) {
+		cJSON *copy = cJSON_CreateString(current);
+		if (copy == NULL) {
+			return NNG_ENOMEM;
+		}
+		if (!(value != NULL ? cJSON_ReplaceItemInObject(json, key, copy)
+		                   : cJSON_AddItemToObject(json, key, copy))) {
+			cJSON_Delete(copy);
+			return NNG_ENOMEM;
+		}
+	}
+	return 0;
+}
+
+int
+preserve_bridge_secrets(cJSON *json, conf_bridge_node *node)
+{
+	int rv;
+	if ((rv = preserve_secret(json, "password", node->password)) != 0) {
+		return rv;
+	}
+	cJSON *ssl = cJSON_GetObjectItem(json, "ssl");
+	if (ssl == NULL || cJSON_IsNull(ssl)) {
+		if (!node->tls.enable) {
+			return 0;
+		}
+		cJSON_DeleteItemFromObject(json, "ssl");
+		ssl = cJSON_AddObjectToObject(json, "ssl");
+		if (ssl == NULL ||
+		    cJSON_AddBoolToObject(ssl, "enable", true) == NULL) {
+			return NNG_ENOMEM;
+		}
+	}
+	if (!cJSON_IsObject(ssl)) {
+		return NNG_EINVAL;
+	}
+	if ((rv = preserve_secret(ssl, "keyfile", node->tls.keyfile)) != 0 ||
+	    (rv = preserve_secret(ssl, "key_password", node->tls.key_password)) != 0 ||
+	    (rv = preserve_secret(ssl, "certfile", node->tls.certfile)) != 0 ||
+	    (rv = preserve_secret(ssl, "cacertfile", node->tls.cafile)) != 0 ||
+	    (rv = preserve_secret(ssl, "sni", node->tls.sni)) != 0) {
+		return rv;
+	}
+	const char *flags[] = { "enable", "verify_peer", "fail_if_no_peer_cert" };
+	bool values[] = { node->tls.enable, node->tls.verify_peer, node->tls.set_fail };
+	for (size_t i = 0; i < sizeof(flags) / sizeof(flags[0]); i++) {
+		cJSON *value = cJSON_GetObjectItem(ssl, flags[i]);
+		if (value == NULL || cJSON_IsNull(value)) {
+			cJSON_DeleteItemFromObject(ssl, flags[i]);
+			if (cJSON_AddBoolToObject(ssl, flags[i], values[i]) == NULL) {
+				return NNG_ENOMEM;
+			}
+		} else if (!cJSON_IsBool(value)) {
+			return NNG_EINVAL;
+		}
+	}
+	return 0;
+}
+
 void
 set_reload_config(cJSON *json, conf *config)
 {
@@ -672,7 +736,10 @@ set_tls_config(
 	if (rv == 0) {
 		update_string(tls->url, tls_url);
 	}
-	getStringValue(json, item, "keypass", tls_keypass, rv);
+	getStringValue(json, item, "key_password", tls_keypass, rv);
+	if (item == NULL) {
+		getStringValue(json, item, "keypass", tls_keypass, rv);
+	}
 	if (rv == 0) {
 		update_string(tls->key_password, tls_keypass);
 	}
@@ -718,6 +785,38 @@ set_http_config(cJSON *json, const char *conf_path, conf_http_server *http)
 		log_error("http_server.users must be an array, credentials "
 		          "unchanged");
 		return REQ_PARAMS_JSON_FORMAT_ILLEGAL;
+	}
+	if (jso_users != NULL) {
+		// The configuration response redacts passwords: an entry without
+		// one keeps the password of the running user with that name.
+		cJSON *ele;
+		rv = 0;
+		if (http->cred_mtx != NULL) {
+			nng_mtx_lock(http->cred_mtx);
+		}
+		cJSON_ArrayForEach(ele, jso_users)
+		{
+			cJSON *name = cJSON_GetObjectItem(ele, "username");
+			for (size_t i = 0; rv == 0 && cJSON_IsString(name) &&
+			     i < http->users_count;
+			     i++) {
+				conf_http_user *user = http->users[i];
+				if (user != NULL && user->username != NULL &&
+				    strcmp(user->username, name->valuestring) == 0) {
+					rv = preserve_secret(
+					    ele, "password", user->password);
+					break;
+				}
+			}
+		}
+		if (http->cred_mtx != NULL) {
+			nng_mtx_unlock(http->cred_mtx);
+		}
+		if (rv != 0) {
+			log_error("http_server.users has an invalid password, "
+			          "credentials unchanged");
+			return REQ_PARAMS_JSON_FORMAT_ILLEGAL;
+		}
 	}
 
 	getBoolValue(json, item, "enable", http_enable, rv);
@@ -853,7 +952,19 @@ set_auth_config(cJSON *json, const char *conf_path, conf_auth *auth)
 		cJSON *kv = cJSON_GetArrayItem(json, i);
 		char * username = NULL, *password = NULL;
 		getStringValue(kv, item, "username", username, rv);
+		if (username == NULL) {
+			getStringValue(kv, item, "login", username, rv);
+		}
 		getStringValue(kv, item, "password", password, rv);
+		if (username != NULL && password == NULL &&
+		    (item == NULL || cJSON_IsNull(item))) {
+			for (size_t j = 0; j < user_count; j++) {
+				if (strcmp(username, auth->usernames[j]) == 0) {
+					password = auth->passwords[j];
+					break;
+				}
+			}
+		}
 
 		if (username && password) {
 			cvector_push_back(
@@ -898,27 +1009,24 @@ set_auth_http_req(cJSON *json, const char *conf_path, conf_auth_http_req *req,
 
 	cJSON *headers = cJSON_GetObjectItem(json, "headers");
 
-	size_t header_count = req->header_count;
-
 	int index = 0;
 	cJSON_ArrayForEach(item, headers)
 	{
 		if (cJSON_IsString(item)) {
 			char *key   = item->string;
 			char *value = item->valuestring;
-
-			// conf_update2(
-			//     conf_path, key_prefix, "headers.", key, value);
-			if (header_count <= index) {
+			for (index = 0; index < req->header_count; index++) {
+				if (nng_strcasecmp(req->headers[index]->key, key) == 0) {
+					break;
+				}
+			}
+			if (index == req->header_count) {
 				conf_http_header *hdr = nng_zalloc(sizeof(conf_http_header));
-				req->header_count++;
-				req->headers = realloc(req->headers,
-				    (req->header_count) * sizeof(char *));
-				req->headers[index] = hdr;
+				cvector_push_back(req->headers, hdr);
+				req->header_count = cvector_size(req->headers);
 			}
 			update_string(req->headers[index]->key, key);
 			update_string(req->headers[index]->value, value);
-			index++;
 		}
 	}
 

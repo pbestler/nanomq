@@ -18,15 +18,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define HTTP_DEFAULT_USER "admin"
-#define HTTP_DEFAULT_PASSWORD "public"
 #define HTTP_DEFAULT_PORT 8081
-#define HTTP_DEFAULT_ADDR "0.0.0.0"
+#define HTTP_DEFAULT_ADDR "127.0.0.1"
 
 extern int  start_rest_server(conf *conf);
 extern void stop_rest_server(void);
 
-extern void              set_http_server_conf(conf_http_server *conf);
+extern int               set_http_server_conf(conf_http_server *conf);
 extern conf_http_server *get_http_server_conf(void);
 
 extern void     set_global_conf(conf *config);
